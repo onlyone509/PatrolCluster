@@ -12,6 +12,7 @@ from DataDic import dic_slave_status
 import pdb
 
 class Master:
+    # 构造函数
     def __init__(self, port, job_queue_size, heart_beat_interval):
         self.port = port
         self.status = 0
@@ -29,13 +30,15 @@ class Master:
     def heart_beat(self, ip, status):
         #print "hello world"
         print "HeartBeat: " + str(ip) + " is " + dic_slave_status[status]
-        self.slave_list[ip][status] = status
+        self.slave_list[ip]["status"] = status        
+        self.slave_list[ip]["last_live_time"] = time.time()
         return 0
     
     # 更新slave状态
     def update_status(self, ip, status):
         print "update status: " + str(ip) + " is " + dic_slave_status[status]
-        self.slave_list[ip][status] = status
+        self.slave_list[ip]["status"] = status
+        self.slave_list[ip]["last_live_time"] = time.time()
         return 0
     
     # 注册新slave节点
@@ -78,7 +81,7 @@ class Master:
                 # 找到一个空闲的slave
                 idle_slave = None
                 for ip in self.slave_list.keys():
-                    if self.slave_list[ip]["status"] == 0:
+                    if self.slave_list[ip]["status"] == 0 and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
                         idle_slave = self.slave_list[ip]["proxy"]
                         break
                 else:
@@ -92,7 +95,7 @@ class Master:
                     job.job_status = 1
                     self.doing_job_list.append(job)
                     print "job_" + str(job.job_id) + "is running"
-            else:
+            else:           # 如果任务队列为空
                 print "queue is empty"
                 time.sleep(15)
 
