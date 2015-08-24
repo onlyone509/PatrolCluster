@@ -21,6 +21,7 @@ class Master:
         self.server.register_function(self.register, 'register')
         self.server.register_function(self.heart_beat, 'heart_beat')
         self.server.register_function(self.update_status, 'update_status')
+        self.server.register_function(self.get_file, 'get_file')
         self.heart_beat_interval = heart_beat_interval
         self.slave_list = {}
         self.to_do_job_queue = Queue.Queue(job_queue_size)
@@ -45,7 +46,7 @@ class Master:
     def register(self, ip, port, status):
         url = "http://%s:%i/" % (ip, port)
         proxy = xmlrpclib.ServerProxy(url)
-        self.slave_list[ip] = {"proxy":proxy, "status":status}
+        self.slave_list[ip] = {"proxy":proxy, "status":status, "last_live_time": time.time()}
         return (len(self.slave_list), self.heart_beat_interval)
     
     # 启动master服务
@@ -71,13 +72,18 @@ class Master:
         else:
             return -1
     
+    def get_file(self, file_path):
+        handle = open(file_path, "rb")
+        return xmlrpclib.Binary(handle.read())
+        handle.close()
+    
     # 检查任务队列
     # todo：如队列不空，取出任务执行
     def check_job_list(self): 
         print "check_job_list is called: " + str(self.status)
         while self.status != 99:
             if not self.to_do_job_queue.empty():    # 如果待执行队列不为空
-                print "queue is not empty"
+                #print "queue is not empty"
                 # 找到一个空闲的slave
                 idle_slave = None
                 for ip in self.slave_list.keys():
@@ -108,7 +114,7 @@ def main():
     master = Master(port, job_queue_size, heart_beat_interval)
     
     # 测试用
-    job = ClusterJob('test', "test1", [])
+    job = ClusterJob('test', "test1", [{"type":"file", "path":"test.txt"}])
     master.add_job(job)
     master.run()
     
