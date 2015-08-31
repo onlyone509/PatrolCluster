@@ -43,8 +43,9 @@ class Slave:
                 file_path = "receive_files/" + str(job_id) + "/"
                 file_name = para["path"]
                 index = para["path"].rfind("/")
+                print "index: " + str(index)
                 if (index != -1):
-                    file_path += para["path"][0:index + 1]
+                    #file_path += para["path"][0:index + 1]
                     file_name = para["path"][index + 1:]
                 try:
                     print file_path

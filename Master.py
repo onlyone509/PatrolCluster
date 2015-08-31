@@ -71,7 +71,11 @@ class Master:
             return job.job_id
         else:
             return -1
-    
+            
+    def add_job_by_para(self, job_name, job_cmd, job_para_list):
+        job = ClusterJob(job_name, job_cmd, job_para_list)
+        return self.add_job(job)
+        
     def get_file(self, file_path):
         handle = open(file_path, "rb")
         return xmlrpclib.Binary(handle.read())
@@ -114,8 +118,10 @@ def main():
     master = Master(port, job_queue_size, heart_beat_interval)
     
     # 测试用
-    job = ClusterJob('test', "test1", [{"type":"file", "path":"test.txt"}])
+    job = ClusterJob('test2', "test2", [{"type":"file", "path":"I:/project/fengzhiji/test.txt"}])
     master.add_job(job)
+    time.sleep(2)
+    master.add_job_by_para('test1', "test1", [{"type":"file", "path":"I:/project/fengzhiji/test.txt"}])
     master.run()
     
 main()
