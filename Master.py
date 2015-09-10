@@ -22,10 +22,13 @@ class Master:
         self.server.register_function(self.heart_beat, 'heart_beat')
         self.server.register_function(self.update_status, 'update_status')
         self.server.register_function(self.get_file, 'get_file')
+        self.server.register_function(self.add_job_by_para, 'add_job_by_para')
+        self.server.register_function(self.get_slave_list, 'get_slave_list')
         self.heart_beat_interval = heart_beat_interval
         self.slave_list = {}
         self.to_do_job_queue = Queue.Queue(job_queue_size)
         self.doing_job_list = []
+        self.schedule_list = []
     
     # 心跳报文
     def heart_beat(self, ip, status):
@@ -53,6 +56,7 @@ class Master:
     def run(self):
         print "Master is running, listening port 8859..."
         thread.start_new_thread(self.check_job_list, ())
+        thread.start_new_thread(self.check_schedule, ())
         self.server.serve_forever()
     
     # 停止master服务
@@ -75,6 +79,12 @@ class Master:
     def add_job_by_para(self, job_name, job_cmd, job_para_list):
         job = ClusterJob(job_name, job_cmd, job_para_list)
         return self.add_job(job)
+
+    def get_slave_list(self):
+        slaves = []
+        for ip in self.slave_list.keys():
+            slaves.append({"IP": ip, "status": dic_slave_status[self.slave_list[ip]["status"]]})
+        return slaves
         
     def get_file(self, file_path):
         handle = open(file_path, "rb")
@@ -108,7 +118,59 @@ class Master:
             else:           # 如果任务队列为空
                 print "queue is empty"
                 time.sleep(15)
-
+    
+    def check_schedule(self):
+        while self.status != 99:
+            #pdb.set_trace()
+            for scheduled_task in self.schedule_list:
+                current_time = time.localtime()
+                if self.match_time(scheduled_task["time"], current_time) and not self.is_same_minute(scheduled_task["last_run_time"], current_time):
+                    # 找到符合时间的任务
+                    print "run a scheduled task: " + time.strftime("%Y-%m-%d %H:%M:%S", current_time)
+                    idle_slave = None
+                    
+                    while idle_slave is None:
+                        for ip in self.slave_list.keys():
+                            if self.slave_list[ip]["status"] == 0 and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
+                                idle_slave = self.slave_list[ip]["proxy"]
+                                break
+                        else:
+                            time.sleep(5)
+                    print "working"
+                    # 从队列中取出一个作业，由空闲的slave运行
+                    job = scheduled_task["job"]
+                    status = idle_slave.work(job.job_id, job.job_cmd, job.job_para_list)
+                    scheduled_task["last_run_time"] = time.localtime()
+                    if status != -1:
+                        # to-do: 更新数据库
+                        job.job_status = 1
+                        self.doing_job_list.append(job)
+                        print "job_" + str(job.job_id) + "is running" 
+    
+    def match_time(self, scheduled_time, current_time):
+        if scheduled_time["hour"] == current_time.tm_hour and scheduled_time["minute"] == current_time.tm_min and (1 << current_time.tm_wday) & scheduled_time["wday"]:
+            return True
+        else:
+            return False
+            
+    def is_same_minute(self, last_run_time, current_time):
+        if last_run_time.tm_year == current_time.tm_year and last_run_time.tm_mon == current_time.tm_mon \
+            and last_run_time.tm_mday == current_time.tm_mday and last_run_time.tm_hour == current_time.tm_hour \
+            and last_run_time.tm_min == current_time.tm_min:
+            return True
+        else:
+            return False
+    
+    def add_schedule(self, hour, minute, week, job_name, job_cmd, job_para_list):
+        scheduled_time = {"hour": hour, "minute": minute, "wday": week}
+        job = ClusterJob(job_name, job_cmd, job_para_list)
+        create_time = time.time()
+        job.create_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(create_time))
+        job.job_id = int(create_time)
+        scheduled_task = {"time": scheduled_time, "job": job, "last_run_time":time.strptime("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")}
+        self.schedule_list.append(scheduled_task)
+        print "scheduled task added: " + str(hour) + ":" + str(minute) + "----" + job_name
+    
 def main():
     config = ConfigParser.ConfigParser()
     config.read("conf.ini")
@@ -118,10 +180,17 @@ def main():
     master = Master(port, job_queue_size, heart_beat_interval)
     
     # 测试用
-    job = ClusterJob('test2', "test2", [{"type":"file", "path":"I:/project/fengzhiji/test.txt"}])
-    master.add_job(job)
+    #job = ClusterJob('test2', "test2", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    #master.add_job(job)
+    #time.sleep(2)
+    #master.add_job_by_para('test1', "test1", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    master.add_schedule(6, 53, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
     time.sleep(2)
-    master.add_job_by_para('test1', "test1", [{"type":"file", "path":"I:/project/fengzhiji/test.txt"}])
+    master.add_schedule(6, 54, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    time.sleep(2)
+    master.add_schedule(6, 55, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    time.sleep(2)
+    master.add_schedule(6, 56, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
     master.run()
     
 main()

@@ -40,9 +40,9 @@ class Slave:
     def prepare_parameter(self, job_id, para_list):
         for para in para_list:
             if para["type"] == "file":
-                file_path = "receive_files/" + str(job_id) + "/"
+                file_path = "receive_files" + os.path.sep + str(job_id) + os.path.sep
                 file_name = para["path"]
-                index = para["path"].rfind("/")
+                index = para["path"].rfind(os.path.sep)
                 print "index: " + str(index)
                 if (index != -1):
                     #file_path += para["path"][0:index + 1]
