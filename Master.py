@@ -24,6 +24,7 @@ class Master:
         self.server.register_function(self.get_file, 'get_file')
         self.server.register_function(self.add_job_by_para, 'add_job_by_para')
         self.server.register_function(self.get_slave_list, 'get_slave_list')
+        self.server.register_function(self.add_schedule, 'add_schedule')
         self.heart_beat_interval = heart_beat_interval
         self.slave_list = {}
         self.to_do_job_queue = Queue.Queue(job_queue_size)
