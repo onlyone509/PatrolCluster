@@ -55,7 +55,7 @@ class Master:
     
     # 启动master服务
     def run(self):
-        print "Master is running, listening port 8859..."
+        print "Master is running, listening port %d..." % self.port
         thread.start_new_thread(self.check_job_list, ())
         thread.start_new_thread(self.check_schedule, ())
         self.server.serve_forever()
