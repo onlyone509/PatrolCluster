@@ -9,10 +9,11 @@ import ConfigParser
 import pdb
 
 class Slave:
-    def __init__(self, ip, port, master_url):
+    def __init__(self, ip, port, worker_type, master_url):
         self.port   = port
         self.ip     = ip
         self.status = 0     #0是空闲，1是忙碌，2是异常，99是关闭
+        self.worker_type = worker_type
         self.master_url = master_url
         self.heart_beat_interval = 0
         self.server = SimpleXMLRPCServer((ip, self.port))
@@ -27,8 +28,8 @@ class Slave:
         
     def run(self):
         #pdb.set_trace()
-        (my_worker_id, self.heart_beat_interval) = self.master_proxy.register(self.ip, self.port, self.status)
-        print "My work_id is " + str(my_worker_id)
+        (my_worker_id, self.heart_beat_interval) = self.master_proxy.register(self.ip, self.port, self.status, self.worker_type)
+        print "I am a " + self.worker_type + " worker. My work_id is " + str(my_worker_id)
         thread.start_new_thread(self.send_heart_beat, ())
         return self.server.serve_forever()
     
@@ -79,7 +80,7 @@ class Slave:
     
     def send_heart_beat(self):
         while self.status != 99:
-            #print "send heart_beat"
+            print "send heart_beat"
             time.sleep(self.heart_beat_interval)
             self.master_proxy.heart_beat(self.ip, self.status)
         else:
@@ -96,9 +97,10 @@ def Main():
     config.read("conf.ini")
     ip = config.get("slave configuration", "ip address")
     port = int(config.get("slave configuration", "listening port"))
+    worker_type = config.get("slave configuration", "worker type")
     master_url = config.get("slave configuration", "master url")
     print master_url
-    slave = Slave(ip, port, master_url)
+    slave = Slave(ip, port, worker_type, master_url)
     slave.run()
 
 Main()

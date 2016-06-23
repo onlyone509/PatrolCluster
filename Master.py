@@ -47,10 +47,10 @@ class Master:
         return 0
     
     # 注册新slave节点
-    def register(self, ip, port, status):
+    def register(self, ip, port, status, worker_type):
         url = "http://%s:%i/" % (ip, port)
         proxy = xmlrpclib.ServerProxy(url)
-        self.slave_list[ip] = {"proxy":proxy, "status":status, "last_live_time": time.time()}
+        self.slave_list[ip] = {"proxy":proxy, "status":status, "worker_type":worker_type, "last_live_time": time.time()}
         return (len(self.slave_list), self.heart_beat_interval)
     
     # 启动master服务
@@ -77,8 +77,8 @@ class Master:
         else:
             return -1
             
-    def add_job_by_para(self, job_name, job_cmd, job_para_list):
-        job = ClusterJob(job_name, job_cmd, job_para_list)
+    def add_job_by_para(self, job_name, worker_type, job_cmd, job_para_list):
+        job = ClusterJob(job_name, worker_type, job_cmd, job_para_list)
         return self.add_job(job)
 
     def get_slave_list(self):
@@ -98,20 +98,26 @@ class Master:
         print "check_job_list is called: " + str(self.status)
         while self.status != 99:
             if not self.to_do_job_queue.empty():    # 如果待执行队列不为空
-                #print "queue is not empty"
-                # 找到一个空闲的slave
-                idle_slave = None
-                for ip in self.slave_list.keys():
-                    if self.slave_list[ip]["status"] == 0 and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
-                        idle_slave = self.slave_list[ip]["proxy"]
-                        break
-                else:
-                    continue
-                print "working"
-                # 从队列中取出一个作业，由空闲的slave运行
+                print "queue is not empty"
+                
+                # 从队列中取出一个作业
                 job = self.to_do_job_queue.get()
+                
+                # 找到一个空闲且worker_type匹配的slave
+                idle_slave = None
+                while idle_slave is None:
+                    for ip in self.slave_list.keys():
+                        if self.slave_list[ip]["status"] == 0 and self.slave_list[ip]["worker_type"] == job.worker_type and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
+                            idle_slave = self.slave_list[ip]["proxy"]
+                            break
+                    else:
+                        print "waiting for a " + job.worker_type + " worker..."
+                        time.sleep(5)
+                
+                #开始执行任务
                 status = idle_slave.work(job.job_id, job.job_cmd, job.job_para_list)
                 if status != -1:
+                    print "working"
                     # to-do: 更新数据库
                     job.job_status = 1
                     self.doing_job_list.append(job)
@@ -128,18 +134,20 @@ class Master:
                 if self.match_time(scheduled_task["time"], current_time) and not self.is_same_minute(scheduled_task["last_run_time"], current_time):
                     # 找到符合时间的任务
                     print "run a scheduled task: " + time.strftime("%Y-%m-%d %H:%M:%S", current_time)
-                    idle_slave = None
                     
+                    # 取出定时任务
+                    job = scheduled_task["job"]
+                    
+                    idle_slave = None
                     while idle_slave is None:
                         for ip in self.slave_list.keys():
-                            if self.slave_list[ip]["status"] == 0 and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
+                            if self.slave_list[ip]["status"] == 0 and self.slave_list[ip]["worker_type"] == job.worker_type and (time.time() - self.slave_list[ip]["last_live_time"]) < 3 * self.heart_beat_interval :
                                 idle_slave = self.slave_list[ip]["proxy"]
                                 break
                         else:
                             time.sleep(5)
                     print "working"
-                    # 从队列中取出一个作业，由空闲的slave运行
-                    job = scheduled_task["job"]
+                    
                     status = idle_slave.work(job.job_id, job.job_cmd, job.job_para_list)
                     scheduled_task["last_run_time"] = time.localtime()
                     if status != -1:
@@ -162,7 +170,7 @@ class Master:
         else:
             return False
     
-    def add_schedule(self, hour, minute, week, job_name, job_cmd, job_para_list):
+    def add_schedule(self, hour, minute, week, job_name, worker_type, job_cmd, job_para_list):
         scheduled_time = {"hour": hour, "minute": minute, "wday": week}
         job = ClusterJob(job_name, job_cmd, job_para_list)
         create_time = time.time()
@@ -180,18 +188,19 @@ def main():
     heart_beat_interval = int(config.get("master configuration", "heart beat interval"))
     master = Master(port, job_queue_size, heart_beat_interval)
     
+    #pdb.set_trace()
     # 测试用
-    #job = ClusterJob('test2', "test2", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
-    #master.add_job(job)
+    job = ClusterJob('test2', "IE", "test2", [{"type":"file", "path":"D:\\project\\fengzhiji\\test.txt"}])
+    master.add_job(job)
+    time.sleep(2)
+    master.add_job_by_para('test1', "IE", "test1", [{"type":"file", "path":"D:\\project\\fengzhiji\\test.txt"}])
+    #master.add_schedule(6, 53, 127, "scheduled", "IE", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
     #time.sleep(2)
-    #master.add_job_by_para('test1', "test1", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
-    master.add_schedule(6, 53, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
-    time.sleep(2)
-    master.add_schedule(6, 54, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
-    time.sleep(2)
-    master.add_schedule(6, 55, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
-    time.sleep(2)
-    master.add_schedule(6, 56, 127, "scheduled", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    #master.add_schedule(6, 54, 127, "scheduled", "IE", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    #time.sleep(2)
+    #master.add_schedule(6, 55, 127, "scheduled", "IE", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
+    #time.sleep(2)
+    #master.add_schedule(6, 56, 127, "scheduled", "IE", "scheduled", [{"type":"file", "path":"I:\\project\\fengzhiji\\test.txt"}])
     master.run()
     
 main()
